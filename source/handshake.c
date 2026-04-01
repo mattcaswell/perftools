@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 #ifndef _WIN32
 # include <libgen.h>
 # include <unistd.h>
@@ -78,7 +79,6 @@ static void do_handshake(size_t num)
     }
 
     counts[num] = 0;
-
     do {
         if (share_ctx == 0) {
             if (!perflib_create_ssl_ctx_pair(TLS_server_method(),
@@ -101,6 +101,10 @@ static void do_handshake(size_t num)
             SSL_CTX_free(lsctx);
             SSL_CTX_free(lcctx);
             lsctx = lcctx = NULL;
+        }
+        if (counts[num] == 0) {
+            CRYPTO_THREAD_start();
+            printf("STARTING!!\n");
         }
         counts[num]++;
         time = ossl_time_now();
@@ -485,6 +489,7 @@ int main(int argc, char * const argv[])
             }
         }
 
+        assert(share_ctx == 1);
         if (!perflib_run_multi_thread_test(do_handshake, threadcount, &duration)) {
             printf("Failed to run the test\n");
             goto err;
@@ -514,6 +519,7 @@ int main(int argc, char * const argv[])
         goto err;
     };
 
+    CRYPTO_THREAD_finish();
     if (err) {
         printf("Error during test\n");
         goto err;
@@ -530,6 +536,7 @@ int main(int argc, char * const argv[])
     } else {
         printf("Average time per handshake: %lfus\n", avcalltime);
         printf("Handshakes per second: %lf\n", persec);
+        printf("Total handshakes: %zu\n", total_count);
     }
 
     ret = EXIT_SUCCESS;
