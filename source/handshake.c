@@ -94,7 +94,7 @@ static void do_handshake(size_t num)
         ret = perflib_create_ssl_objects(lsctx, lcctx, &serverssl, &clientssl,
                                          NULL, NULL);
         ret &= perflib_create_ssl_connection(serverssl, clientssl,
-                                             SSL_ERROR_NONE);
+                                             SSL_ERROR_NONE, NULL);
         perflib_shutdown_ssl_connection(serverssl, clientssl);
         serverssl = clientssl = NULL;
         if (share_ctx == 0) {
@@ -148,7 +148,7 @@ static void do_handshake_ossl_lib_ctx_per_thread(size_t num)
         ret = perflib_create_ssl_objects(lsctx, lcctx, &serverssl, &clientssl,
                                          NULL, NULL);
         ret &= perflib_create_ssl_connection(serverssl, clientssl,
-                                             SSL_ERROR_NONE);
+                                             SSL_ERROR_NONE, NULL);
         perflib_shutdown_ssl_connection(serverssl, clientssl);
         serverssl = clientssl = NULL;
         if (share_ctx == 0) {
@@ -218,7 +218,7 @@ static void do_handshake_ctx_pool(size_t num)
         ret = perflib_create_ssl_objects(lsctx, lcctx, &serverssl, &clientssl,
                                          NULL, NULL);
         ret &= perflib_create_ssl_connection(serverssl, clientssl,
-                                             SSL_ERROR_NONE);
+                                             SSL_ERROR_NONE, NULL);
         perflib_shutdown_ssl_connection(serverssl, clientssl);
         serverssl = clientssl = NULL;
         if (share_ctx == 0 && test_case == TC_OSSL_LIB_CTX_POOL) {

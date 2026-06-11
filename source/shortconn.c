@@ -44,7 +44,6 @@
  */
 
 #define RUN_TIME 5
-#define MAXLOOPS 1000000
 
 int err = 0;
 
@@ -93,11 +92,7 @@ static void do_shortconn(size_t num)
     server_time[num] = ossl_time_zero();
 
     do {
-        BIO *s_to_c_bio = NULL, *c_to_s_bio = NULL;
-        int written, readbytes, i;
-        int retc = -1, rets = -1, sslerr, abortctr = 0;
-        int clienterr = 0, servererr = 0;
-        unsigned char dummy;
+        int written, readbytes;
 
         if (share_ctx == 0) {
             if (!perflib_create_ssl_ctx_pair(TLS_server_method(),
@@ -107,14 +102,14 @@ static void do_shortconn(size_t num)
                 ERR_print_errors_fp(stderr);
                 fprintf(stderr, "%s:%d: Failed to create SSL_CTX pair\n", __FILE__, __LINE__);
                 ret = 0;
-                break;
+                goto end;
             }
             if ((server_groups != NULL && !SSL_CTX_set1_groups_list(lsctx, server_groups))
                     || (client_groups != NULL && !SSL_CTX_set1_groups_list(lcctx, client_groups))) {
                 ERR_print_errors_fp(stderr);
                 fprintf(stderr, "%s:%d: Failed to set groups list\n", __FILE__, __LINE__);
                 ret = 0;
-                break;
+                goto end;
             }
             if (max_version != 0
                     && (!SSL_CTX_set_max_proto_version(lsctx, max_version)
@@ -122,7 +117,7 @@ static void do_shortconn(size_t num)
                 ERR_print_errors_fp(stderr);
                 fprintf(stderr, "%s:%d: Failed to set max proto version\n", __FILE__, __LINE__);
                 ret = 0;
-                break;
+                goto end;
             }
         }
 
@@ -133,102 +128,65 @@ static void do_shortconn(size_t num)
         t1 = ossl_time_now();
         server_time[num] = ossl_time_add(server_time[num], ossl_time_subtract(t1, t0));
 
-        ret = (clientssl != NULL && serverssl != NULL);
-
-        if (ret) {
-            s_to_c_bio = BIO_new(BIO_s_mem());
-            c_to_s_bio = BIO_new(BIO_s_mem());
-            ret = (s_to_c_bio != NULL && c_to_s_bio != NULL);
-        }
-        if (ret) {
-            /* Set Non-blocking IO behaviour */
-            BIO_set_mem_eof_return(s_to_c_bio, -1);
-            BIO_set_mem_eof_return(c_to_s_bio, -1);
-
-            /* Up ref these as we are passing them to two SSL objects */
-            SSL_set_bio(serverssl, c_to_s_bio, s_to_c_bio);
-            BIO_up_ref(s_to_c_bio);
-            BIO_up_ref(c_to_s_bio);
-            SSL_set_bio(clientssl, s_to_c_bio, c_to_s_bio);
-        } else {
-            BIO_free(s_to_c_bio);
-            BIO_free(c_to_s_bio);
+        if (clientssl == NULL || serverssl == NULL) {
+            ret = 0;
+            goto end;
         }
 
-        /* Perform the handshake, timing only the server (SSL_accept) side */
-        while (ret && (retc <= 0 || rets <= 0)) {
-            sslerr = SSL_ERROR_WANT_WRITE;
-            while (!clienterr && retc <= 0 && sslerr == SSL_ERROR_WANT_WRITE) {
-                retc = SSL_connect(clientssl);
-                if (retc <= 0)
-                    sslerr = SSL_get_error(clientssl, retc);
-            }
-            if (!clienterr && retc <= 0 && sslerr != SSL_ERROR_WANT_READ)
-                clienterr = 1;
-
-            sslerr = SSL_ERROR_WANT_WRITE;
-            while (!servererr && rets <= 0 && sslerr == SSL_ERROR_WANT_WRITE) {
-                t0 = ossl_time_now();
-                rets = SSL_accept(serverssl);
-                t1 = ossl_time_now();
-                server_time[num] = ossl_time_add(server_time[num],
-                                                  ossl_time_subtract(t1, t0));
-                if (rets <= 0)
-                    sslerr = SSL_get_error(serverssl, rets);
-            }
-            if (!servererr && rets <= 0
-                    && sslerr != SSL_ERROR_WANT_READ
-                    && sslerr != SSL_ERROR_WANT_X509_LOOKUP)
-                servererr = 1;
-
-            if (clienterr || servererr || ++abortctr == MAXLOOPS) {
-                ret = 0;
-                break;
-            }
+        if (!perflib_create_ssl_objects(lsctx, lcctx, &serverssl, &clientssl,
+                                         NULL, NULL)) {
+            /* The SSL objects we passed in have already been freed on error */
+            serverssl = clientssl = NULL;
+            ret = 0;
+            goto end;
         }
 
         /*
-         * Drain any TLSv1.3 NewSessionTicket messages on the client side, to
-         * mirror what perflib_create_ssl_connection() does.
+         * Perform the handshake (including draining any post-handshake
+         * NewSessionTicket messages), timing only the server (SSL_accept)
+         * side.
          */
-        for (i = 0; ret && i < 2; i++) {
-            readbytes = SSL_read(clientssl, &dummy, sizeof(dummy));
-            if (readbytes >= 0) {
-                if (readbytes != 0)
-                    ret = 0;
-            } else if (SSL_get_error(clientssl, 0) != SSL_ERROR_WANT_READ) {
-                ret = 0;
-            }
+        if (!perflib_create_ssl_connection(serverssl, clientssl, SSL_ERROR_NONE,
+                                            &server_time[num])) {
+            ret = 0;
+            goto end;
         }
 
         /* Client sends a "request" which the server reads */
-        if (ret) {
-            written = SSL_write(clientssl, reqbuf, req_size);
-            ret = (written == req_size);
+        written = SSL_write(clientssl, reqbuf, req_size);
+        if (written != req_size) {
+            ret = 0;
+            goto end;
         }
-        if (ret) {
-            t0 = ossl_time_now();
-            readbytes = SSL_read(serverssl, reqbuf, req_size);
-            t1 = ossl_time_now();
-            server_time[num] = ossl_time_add(server_time[num],
-                                              ossl_time_subtract(t1, t0));
-            ret = (readbytes == req_size);
+
+        t0 = ossl_time_now();
+        readbytes = SSL_read(serverssl, reqbuf, req_size);
+        t1 = ossl_time_now();
+        server_time[num] = ossl_time_add(server_time[num],
+                                          ossl_time_subtract(t1, t0));
+        if (readbytes != req_size) {
+            ret = 0;
+            goto end;
         }
 
         /* Server sends a "response" which the client reads */
-        if (ret) {
-            t0 = ossl_time_now();
-            written = SSL_write(serverssl, respbuf, resp_size);
-            t1 = ossl_time_now();
-            server_time[num] = ossl_time_add(server_time[num],
-                                              ossl_time_subtract(t1, t0));
-            ret = (written == resp_size);
-        }
-        if (ret) {
-            readbytes = SSL_read(clientssl, respbuf, resp_size);
-            ret = (readbytes == resp_size);
+        t0 = ossl_time_now();
+        written = SSL_write(serverssl, respbuf, resp_size);
+        t1 = ossl_time_now();
+        server_time[num] = ossl_time_add(server_time[num],
+                                          ossl_time_subtract(t1, t0));
+        if (written != resp_size) {
+            ret = 0;
+            goto end;
         }
 
+        readbytes = SSL_read(clientssl, respbuf, resp_size);
+        if (readbytes != resp_size) {
+            ret = 0;
+            goto end;
+        }
+
+ end:
         /* Shut down the connection: client first (untimed), then server */
         SSL_shutdown(clientssl);
         t0 = ossl_time_now();

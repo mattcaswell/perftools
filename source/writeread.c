@@ -66,7 +66,7 @@ static void do_writeread(size_t num)
     ret = perflib_create_ssl_objects(lsctx, lcctx, &serverssl, &clientssl,
                                      NULL, NULL);
     ret &= perflib_create_bare_ssl_connection(serverssl, clientssl,
-                                              SSL_ERROR_NONE);
+                                              SSL_ERROR_NONE, NULL);
     if (!ret) {
         err = 1;
         return;
