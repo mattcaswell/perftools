@@ -394,6 +394,20 @@ set(run_writeread_buffers
     CACHE STRING "Buffer size for writeread")
 list(APPEND run_opts run_writeread_buffers)
 
+add_executable(shortconn shortconn.c)
+target_link_libraries(shortconn PRIVATE perf)
+list(APPEND run_tests shortconn)
+if (NOT WITH_OPENSSL_FORK)
+    set(run_shortconn_ctx_sharing
+        shortconn "" "" "-s"
+        CACHE STRING "Context sharing for shortconn")
+    list(APPEND run_opts run_shortconn_ctx_sharing)
+endif()
+set(run_shortconn_buffers
+    shortconn "" "" "-b 256" "-b 8192"
+    CACHE STRING "Response buffer size for shortconn")
+list(APPEND run_opts run_shortconn_buffers)
+
 if( NOT WITH_OPENSSL_FORK )
     add_executable(evp_hash evp_hash.c)
     target_link_libraries(evp_hash PRIVATE perf)
@@ -417,7 +431,7 @@ set(run_add_version_dep ON
                "(call all the tests with -V option before the main run)")
 
 # Used across multiple tests
-set(run_certdir_tests handshake writeread x509storeissuer
+set(run_certdir_tests handshake writeread shortconn x509storeissuer
     CACHE STRING "List of tests that require certdir parameter")
 if ( WITH_OPENSSL_FORK )
     file(TO_NATIVE_PATH "${OPENSSL_SOURCE}/test/certs/" run_certdir_def_path)
