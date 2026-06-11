@@ -166,6 +166,43 @@ certsdir - directory where the test can locate servercert.pem and serverkey.pem.
 threadcount - number of concurrent threads to run in test.
 ```
 
+## shortconn
+
+Simulates a server handling many short-lived TLS connections, such as a
+webserver handling HTTP/1.1 requests sent with `Connection: close`. For each
+connection a new pair of SSL objects is created, a full TLS handshake is
+performed, a single small "request" is written by the client and read by the
+server, a "response" is written by the server and read by the client, and the
+connection is then shut down and freed. This is repeated for `RUN_TIME`
+seconds, divided evenly among each thread.
+
+Unlike `handshake`, this test exchanges application data over the connection.
+Unlike `writeread`, a brand new connection (including the handshake and
+shutdown) is created for every request/response pair, so it captures the
+per-connection setup/teardown costs of the record layer in addition to the
+read/write costs.
+
+In addition to the overall per-connection time, the time spent specifically in
+the SSL object acting as the *server* (SSL_new, SSL_accept, SSL_read,
+SSL_write, SSL_shutdown and SSL_free) is tracked and reported separately. This
+is the figure most comparable to a webserver such as nginx handling requests
+from a load generator whose own TLS stack is unaffected by the OpenSSL version
+under test.
+
+```
+shortconn [-t] [-s] [-q size] [-b size] [-g groups] [-G groups] [-2] [-V] <certsdir> <threadcount>
+-t - produce terse output. Prints "<avg connection time> <avg server-side time>".
+-s - create an ssl_ctx per connection, rather than a single thread-shared ctx.
+-q - size of the simulated request written by the client, default is 256 bytes.
+-b - size of the simulated response written by the server, default is 1024 bytes.
+-g - colon separated list of groups for the server SSL_CTX.
+-G - colon separated list of groups for the client SSL_CTX.
+-2 - restrict negotiation to a maximum of TLSv1.2.
+-V - print version information and exit.
+certsdir - directory where the test can locate servercert.pem and serverkey.pem.
+threadcount - number of concurrent threads to run in test.
+```
+
 ## ssl_poll_perf
 
 Tool to evaluate performance of QUIC client and server which both use

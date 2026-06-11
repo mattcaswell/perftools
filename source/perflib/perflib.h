@@ -56,8 +56,10 @@ int perflib_create_ossl_lib_ctx_pair(OSSL_LIB_CTX *libctx, const SSL_METHOD *sm,
 int perflib_create_ssl_objects(SSL_CTX *serverctx, SSL_CTX *clientctx,
                                SSL **sssl, SSL **cssl, BIO *s_to_c_fbio,
                                BIO *c_to_s_fbio);
-int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want);
-int perflib_create_ssl_connection(SSL *serverssl, SSL *clientssl, int want);
+int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
+                                       OSSL_TIME *accept_time);
+int perflib_create_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
+                                  OSSL_TIME *accept_time);
 void perflib_shutdown_ssl_connection(SSL *serverssl, SSL *clientssl);
 
 #endif

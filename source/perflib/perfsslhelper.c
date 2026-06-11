@@ -186,11 +186,15 @@ int perflib_create_ssl_objects(SSL_CTX *serverctx, SSL_CTX *clientctx,
  * We stop the connection attempt (and return a failure value) if either peer
  * has SSL_get_error() return the value in the |want| parameter. The connection
  * attempt could be restarted by a subsequent call to this function.
+ * If |accept_time| is non-NULL, the time spent in SSL_accept() calls on the
+ * server side is added to it.
  */
-int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want)
+int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
+                                       OSSL_TIME *accept_time)
 {
     int retc = -1, rets = -1, err, abortctr = 0, ret = 0;
     int clienterr = 0, servererr = 0;
+    OSSL_TIME t0, t1;
 
     do {
         err = SSL_ERROR_WANT_WRITE;
@@ -211,7 +215,14 @@ int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want)
 
         err = SSL_ERROR_WANT_WRITE;
         while (!servererr && rets <= 0 && err == SSL_ERROR_WANT_WRITE) {
+            if (accept_time != NULL)
+                t0 = ossl_time_now();
             rets = SSL_accept(serverssl);
+            if (accept_time != NULL) {
+                t1 = ossl_time_now();
+                *accept_time = ossl_time_add(*accept_time,
+                                             ossl_time_subtract(t1, t0));
+            }
             if (rets <= 0)
                 err = SSL_get_error(serverssl, rets);
         }
@@ -241,15 +252,17 @@ int perflib_create_bare_ssl_connection(SSL *serverssl, SSL *clientssl, int want)
 
 /*
  * Create an SSL connection including any post handshake NewSessionTicket
- * messages.
+ * messages. If |accept_time| is non-NULL, the time spent in SSL_accept()
+ * calls on the server side is added to it.
  */
-int perflib_create_ssl_connection(SSL *serverssl, SSL *clientssl, int want)
+int perflib_create_ssl_connection(SSL *serverssl, SSL *clientssl, int want,
+                                  OSSL_TIME *accept_time)
 {
     int i;
     unsigned char buf;
     int readbytes;
 
-    if (!perflib_create_bare_ssl_connection(serverssl, clientssl, want))
+    if (!perflib_create_bare_ssl_connection(serverssl, clientssl, want, accept_time))
         return 0;
 
     /*
